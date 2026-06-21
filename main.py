@@ -71,6 +71,10 @@ class PelangganCreate(BaseModel):
     alamat: str
     no_meter: str
     kategori: str
+    no_hp: str
+    nik: str
+    status_pelanggan: str
+    jenis_pelanggan: str
 
 
 class PelangganUpdate(BaseModel):
@@ -153,6 +157,69 @@ TirtaDesa
 @app.get("/")
 def root():
     return {"message": "TirtaDesa API Running"}
+
+@app.post("/auth/login")
+def admin_login(
+    data: LoginData,
+    db: Session = Depends(get_db)
+):
+    return login(data, db)
+
+
+@app.get("/admin/dashboard")
+def dashboard(
+    db: Session = Depends(get_db)
+):
+    total_pelanggan = db.query(PelangganModel).count()
+
+    return {
+        "total_pelanggan": total_pelanggan,
+        "total_meter": 0,
+        "komplain_baru": 0,
+        "pengajuan_pemasangan_baru": 0,
+        "tagihan_belum_lunas": 0
+    }
+
+@app.post("/admin/pelanggan")
+def admin_tambah_pelanggan(
+    data: PelangganCreate,
+    db: Session = Depends(get_db)
+):
+    pelanggan = PelangganModel(
+        nama=data.nama,
+        alamat=data.alamat,
+        no_meter=data.no_meter,
+        kategori=data.kategori
+    )
+
+    db.add(pelanggan)
+    db.commit()
+    db.refresh(pelanggan)
+
+    return pelanggan
+
+@app.delete("/admin/pelanggan/{id}")
+def admin_delete_pelanggan(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    pelanggan = db.query(PelangganModel).filter(
+        PelangganModel.id == id
+    ).first()
+
+    if not pelanggan:
+        raise HTTPException(
+            status_code=404,
+            detail="Pelanggan tidak ditemukan"
+        )
+
+    db.delete(pelanggan)
+    db.commit()
+
+    return {"message": "Berhasil dihapus"}
+
+
+
 
 @app.post("/send-otp")
 def send_otp(

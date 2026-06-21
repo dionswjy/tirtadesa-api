@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>TirtaDesa Admin Web</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <section id="loginPage" class="login-page hidden">
+        <div class="login-card">
+            <div class="login-logo">💧</div>
+            <h1>Admin TirtaDesa</h1>
+            <p>Masuk untuk mengelola data pelanggan, meter air, tagihan, komplain, dan pemasangan baru.</p>
+
+            <form id="loginForm">
+                <div class="form-group">
+                    <label>Email Admin</label>
+                    <input type="email" id="loginEmail" value="admin@tirtadesa.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" value="admin123" required>
+                </div>
+
+                <button class="btn btn-primary btn-full" type="submit">Masuk Admin</button>
+                <div id="loginMessage" class="message"></div>
+            </form>
+        </div>
+    </section>
+
+    <section id="adminPage" class="layout hidden">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">💧</div>
+                <div>
+                    <div class="brand-title">TirtaDesa</div>
+                    <div class="brand-subtitle">Admin Web</div>
+                </div>
+            </div>
+
+            <nav class="nav">
+                <button data-page="dashboard">Dashboard</button>
+                <button data-page="pelanggan">Pelanggan</button>
+                <button data-page="meter">Meter Air</button>
+                <button data-page="catatMeter">Catat Meter</button>
+                <button data-page="tagihan">Tagihan</button>
+                <button data-page="komplain">Komplain</button>
+                <button data-page="pemasanganBaru">Pemasangan Baru</button>
+                <button onclick="window.open(API_BASE_URL + '/docs', '_blank')">API Docs</button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="btn btn-danger btn-full" onclick="logout()">Logout</button>
+            </div>
+        </aside>
+
+        <main class="content">
+            <div class="topbar">
+                <h1 id="pageTitle">Dashboard</h1>
+                <div id="adminInfo" class="admin-info">Admin</div>
+            </div>
+
+            <div id="pageContent"></div>
+        </main>
+    </section>
+
+    <script src="assets/js/config.js"></script>
+    <script src="assets/js/app.js"></script>
+</body>
+</html>
