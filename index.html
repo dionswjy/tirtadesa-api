@@ -5,6 +5,7 @@
     <title>TirtaDesa Admin Web</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/modal.css">
 </head>
 <body>
     <section id="loginPage" class="login-page hidden">
@@ -43,6 +44,7 @@
             <nav class="nav">
                 <button data-page="dashboard">Dashboard</button>
                 <button data-page="pelanggan">Pelanggan</button>
+                <button data-page="user">User</button>
                 <button data-page="meter">Meter Air</button>
                 <button data-page="catatMeter">Catat Meter</button>
                 <button data-page="tagihan">Tagihan</button>
@@ -66,7 +68,23 @@
         </main>
     </section>
 
-    <script src="assets/js/config.js"></script>
-    <script src="assets/js/app.js"></script>
+    <div id="modalOverlay" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">Edit Data</h3>
+                <button type="button" class="modal-close" onclick="hideModal()">×</button>
+            </div>
+            <form id="modalForm" class="modal-form" onsubmit="submitModalForm(event)">
+                <div id="modalFields"></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="hideModal()">Batal</button>
+                    <button type="submit" class="btn btn-primary">Simpan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="assets/js/config.js?v=20260627-2"></script>
+    <script src="assets/js/app.js?v=20260627-2"></script>
 </body>
 </html>

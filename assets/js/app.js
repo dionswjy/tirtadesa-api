@@ -43,7 +43,8 @@ async function apiFetch(path, options = {}) {
 
     const response = await fetch(`${API_BASE_URL}${path}`, {
         ...options,
-        headers
+        headers,
+        cache: "no-store"
     });
 
     const data = await response.json().catch(() => ({}));
@@ -111,6 +112,7 @@ async function openPage(page) {
     const titleMap = {
         dashboard: "Dashboard",
         pelanggan: "Data Pelanggan",
+        user: "Data User",
         meter: "Data Meter Air",
         catatMeter: "Catat Meter",
         tagihan: "Data Tagihan",
@@ -122,6 +124,7 @@ async function openPage(page) {
 
     if (page === "dashboard") return loadDashboard();
     if (page === "pelanggan") return loadPelanggan();
+    if (page === "user") return loadUser();
     if (page === "meter") return loadMeter();
     if (page === "catatMeter") return loadCatatMeter();
     if (page === "tagihan") return loadTagihan();
@@ -153,8 +156,252 @@ function badge(value) {
     return `<span class="badge ${cls}">${safe(v)}</span>`;
 }
 
+let modalConfig = null;
+
 function render(html) {
     document.getElementById("pageContent").innerHTML = html;
+}
+
+function showModal(title, fields, endpoint, reloadFnName) {
+    modalConfig = { endpoint, reloadFnName };
+    document.getElementById("modalTitle").textContent = title;
+
+    const fieldsContainer = document.getElementById("modalFields");
+    fieldsContainer.innerHTML = fields.map(field => {
+        const readonly = field.readonly ? "readonly" : "";
+        const required = field.required ? "required" : "";
+        const value = field.value ?? "";
+
+        if (field.type === "select") {
+            return `
+                <div class="form-group">
+                    <label>${field.label}</label>
+                    <select name="${field.name}" ${readonly} ${required}>
+                        ${field.options.map(option => `
+                            <option value="${option.value}" ${option.value === value ? "selected" : ""}>${option.label}</option>
+                        `).join("")}
+                    </select>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="form-group">
+                <label>${field.label}</label>
+                <input
+                    type="${field.type}"
+                    name="${field.name}"
+                    value="${value}"
+                    ${readonly}
+                    ${required}
+                />
+            </div>
+        `;
+    }).join("");
+
+    document.getElementById("modalOverlay").classList.remove("hidden");
+}
+
+function hideModal() {
+    document.getElementById("modalOverlay").classList.add("hidden");
+    document.getElementById("modalFields").innerHTML = "";
+    modalConfig = null;
+}
+
+async function submitModalForm(event) {
+    event.preventDefault();
+
+    if (!modalConfig) return;
+
+    const form = event.target;
+    const payload = {};
+
+    for (const [key, value] of new FormData(form).entries()) {
+        const element = form.elements.namedItem(key);
+        if (element && element.readOnly) continue;
+
+        const textValue = value.trim();
+        if (textValue === "") continue;
+
+        if (element instanceof HTMLInputElement && element.type === "number") {
+            payload[key] = Number(textValue);
+        } else {
+            payload[key] = textValue;
+        }
+    }
+
+    try {
+        await apiFetch(modalConfig.endpoint, {
+            method: "PUT",
+            body: JSON.stringify(payload)
+        });
+        hideModal();
+        await window[modalConfig.reloadFnName]();
+        alert("Data berhasil diperbarui");
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+function promptValue(label, current) {
+    const value = prompt(`${label}`, current ?? "");
+    if (value === null) return null;
+    return value;
+}
+
+async function sendPut(endpoint, payload, reloadFnName) {
+    try {
+        await apiFetch(endpoint, {
+            method: "PUT",
+            body: JSON.stringify(payload)
+        });
+        alert("Data berhasil diperbarui");
+        await window[reloadFnName]();
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+async function editPelanggan(button) {
+    const row = button.closest("tr");
+    showModal(
+        "Edit Pelanggan",
+        [
+            { name: "nama", label: "Nama", type: "text", value: row.children[1].textContent, required: true },
+            { name: "nik", label: "NIK", type: "text", value: row.children[2].textContent, required: true },
+            { name: "no_meter", label: "No Meter", type: "text", value: "" },
+            { name: "kategori", label: "Kategori", type: "text", value: "" },
+            { name: "alamat", label: "Alamat", type: "text", value: row.children[3].textContent, required: true },
+            { name: "no_hp", label: "No HP", type: "text", value: row.children[4].textContent, required: true },
+            { name: "status_pelanggan", label: "Status Pelanggan", type: "select", value: row.children[5].textContent, options: [
+                { value: "aktif", label: "Aktif" },
+                { value: "blacklist", label: "Blacklist" }
+            ], required: true },
+            { name: "jenis_pelanggan", label: "Jenis Pelanggan", type: "select", value: row.children[6].textContent, options: [
+                { value: "non_subsidi", label: "Non Subsidi" },
+                { value: "subsidi", label: "Subsidi" }
+            ], required: true }
+        ],
+        `/pelanggan/${row.children[0].textContent}`,
+        "loadPelanggan"
+    );
+}
+
+async function editMeter(button) {
+    const row = button.closest("tr");
+    showModal(
+        "Edit Meter Air",
+        [
+            { name: "pelanggan_id", label: "ID Pelanggan", type: "number", value: row.children[1].textContent, required: true },
+            { name: "no_meter", label: "No Meter", type: "text", value: row.children[2].textContent, required: true },
+            { name: "alamat_lokasi", label: "Alamat Lokasi", type: "text", value: row.children[3].textContent, required: true },
+            { name: "status_meter", label: "Status Meter", type: "select", value: row.children[4].textContent, options: [
+                { value: "aktif", label: "Aktif" },
+                { value: "nonaktif", label: "Nonaktif" }
+            ], required: true }
+        ],
+        `/meter/${row.children[0].textContent}`,
+        "loadMeter"
+    );
+}
+
+async function editCatatMeter(button) {
+    const row = button.closest("tr");
+    showModal(
+        "Edit Catat Meter",
+        [
+            { name: "meter_id", label: "ID Meter", type: "number", value: row.children[1].textContent, required: true },
+            { name: "bulan", label: "Bulan", type: "text", value: row.children[2].textContent, required: true },
+            { name: "angka_meter_lalu", label: "Angka Meter Lalu", type: "number", value: row.children[3].textContent, required: true },
+            { name: "angka_meter_kini", label: "Angka Meter Kini", type: "number", value: row.children[4].textContent, required: true },
+            { name: "penggunaan_m3", label: "Penggunaan m³", type: "number", value: row.children[5].textContent.replace(/\s*m³/, ""), required: true },
+            { name: "petugas_nama", label: "Nama Petugas", type: "text", value: row.children[6].textContent, required: true }
+        ],
+        `/admin/catat-meter/${row.children[0].textContent}`,
+        "loadCatatMeter"
+    );
+}
+
+async function editTagihan(button) {
+    const row = button.closest("tr");
+    showModal(
+        "Edit Tagihan",
+        [
+            { name: "meter_id", label: "ID Meter", type: "number", value: row.children[1].textContent, required: true },
+            { name: "bulan", label: "Bulan", type: "text", value: row.children[2].textContent, required: true },
+            { name: "penggunaan_m3", label: "Penggunaan m³", type: "number", value: row.children[3].textContent.replace(/\s*m³/, ""), required: true },
+            { name: "total_tagihan", label: "Total Tagihan", type: "number", value: row.children[4].textContent.replace(/[^0-9]/g, ""), required: true },
+            { name: "status_pembayaran", label: "Status Pembayaran", type: "select", value: row.children[5].textContent, options: [
+                { value: "belum_lunas", label: "Belum Lunas" },
+                { value: "lunas", label: "Lunas" }
+            ], required: true }
+        ],
+        `/admin/tagihan/${row.children[0].textContent}`,
+        "loadTagihan"
+    );
+}
+
+async function editKomplain(button) {
+    const row = button.closest("tr");
+    showModal(
+        "Edit Komplain",
+        [
+            { name: "pelanggan_id", label: "ID Pelanggan", type: "number", value: row.children[1].textContent, required: true },
+            { name: "judul", label: "Judul", type: "text", value: row.children[2].textContent, required: true },
+            { name: "deskripsi", label: "Deskripsi", type: "text", value: row.children[3].textContent, required: true },
+            { name: "status", label: "Status", type: "select", value: row.children[4].textContent, options: [
+                { value: "pending", label: "Pending" },
+                { value: "selesai", label: "Selesai" },
+                { value: "ditolak", label: "Ditolak" }
+            ], required: true }
+        ],
+        `/admin/komplain/${row.children[0].textContent}`,
+        "loadKomplain"
+    );
+}
+
+async function editPemasanganBaru(button) {
+    const row = button.closest("tr");
+    showModal(
+        "Edit Pengajuan Pemasangan",
+        [
+            { name: "nama", label: "Nama", type: "text", value: row.children[1].textContent, required: true },
+            { name: "nik", label: "NIK", type: "text", value: row.children[2].textContent, required: true },
+            { name: "alamat", label: "Alamat", type: "text", value: row.children[3].textContent, required: true },
+            { name: "no_hp", label: "No HP", type: "text", value: row.children[4].textContent, required: true },
+            { name: "jenis_pelanggan", label: "Jenis Pelanggan", type: "select", value: row.children[5].textContent, options: [
+                { value: "non_subsidi", label: "Non Subsidi" },
+                { value: "subsidi", label: "Subsidi" }
+            ], required: true },
+            { name: "status", label: "Status", type: "select", value: row.children[6].textContent, options: [
+                { value: "pending", label: "Pending" },
+                { value: "diterima", label: "Diterima" },
+                { value: "ditolak", label: "Ditolak" }
+            ], required: true }
+        ],
+        `/admin/pemasangan-baru/${row.children[0].textContent}`,
+        "loadPemasanganBaru"
+    );
+}
+
+async function editUser(button) {
+    const row = button.closest("tr");
+    showModal(
+        "Edit User",
+        [
+            { name: "name", label: "Nama", type: "text", value: row.children[1].textContent, required: true },
+            { name: "email", label: "Email", type: "text", value: row.children[2].textContent, readonly: true },
+            { name: "phone", label: "No HP", type: "text", value: row.children[3].textContent, required: true },
+            { name: "role", label: "Role", type: "select", value: row.children[4].textContent, options: [
+                { value: "pelanggan", label: "Pelanggan" },
+                { value: "admin", label: "Admin" },
+                { value: "petugas", label: "Petugas" }
+            ], required: true },
+            { name: "password", label: "Password baru", type: "text", value: "" }
+        ],
+        `/admin/user/${row.children[0].textContent}`,
+        "loadUser"
+    );
 }
 
 async function submitData(event, endpoint, reloadFnName) {
@@ -208,28 +455,29 @@ async function deleteData(endpoint, reloadFnName) {
 async function loadDashboard() {
     try {
         const data = await apiFetch("/admin/dashboard");
+        const stats = data?.data ?? data;
 
         render(`
             <div class="cards">
                 <div class="card">
                     <div class="card-title">Total Pelanggan</div>
-                    <div class="card-value">${data.total_pelanggan ?? 0}</div>
+                    <div class="card-value">${stats.total_pelanggan ?? 0}</div>
                 </div>
                 <div class="card">
                     <div class="card-title">Total Meter</div>
-                    <div class="card-value">${data.total_meter ?? 0}</div>
+                    <div class="card-value">${stats.total_meter ?? 0}</div>
                 </div>
                 <div class="card">
                     <div class="card-title">Komplain Baru</div>
-                    <div class="card-value">${data.komplain_baru ?? 0}</div>
+                    <div class="card-value">${stats.komplain_baru ?? 0}</div>
                 </div>
                 <div class="card">
                     <div class="card-title">Pengajuan Baru</div>
-                    <div class="card-value">${data.pengajuan_pemasangan_baru ?? 0}</div>
+                    <div class="card-value">${stats.pengajuan_pemasangan_baru ?? 0}</div>
                 </div>
                 <div class="card">
                     <div class="card-title">Tagihan Belum Lunas</div>
-                    <div class="card-value">${data.tagihan_belum_lunas ?? 0}</div>
+                    <div class="card-value">${stats.tagihan_belum_lunas ?? 0}</div>
                 </div>
             </div>
 
@@ -322,10 +570,106 @@ async function loadPelanggan() {
                                 <td>${badge(item.status_pelanggan)}</td>
                                 <td>${badge(item.jenis_pelanggan)}</td>
                                 <td>
+                                    <button class="btn btn-secondary" onclick="editPelanggan(this)">Edit</button>
                                     <button class="btn btn-danger" onclick="deleteData('/pelanggan/${item.id}', 'loadPelanggan')">Hapus</button>
                                 </td>
                             </tr>
                         `).join("") : `<tr><td colspan="8" class="empty">Belum ada data pelanggan</td></tr>`}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `);
+}
+
+async function updateUserRole(id) {
+    const newRole = prompt("Masukkan role baru untuk user ini (misal: admin atau pelanggan):");
+    if (!newRole) return;
+
+    try {
+        await apiFetch(`/admin/user/${id}/role`, {
+            method: "PUT",
+            body: JSON.stringify({ role: newRole })
+        });
+        alert("Role berhasil diubah");
+        await loadUser();
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+async function loadUser() {
+    const data = await apiFetch("/admin/users");
+
+    render(`
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Tambah User</h2>
+            </div>
+
+            <form class="grid-form" onsubmit="submitData(event, '/admin/user', 'loadUser')">
+                <div class="form-group">
+                    <label>Nama</label>
+                    <input name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input name="email" type="email" required>
+                </div>
+                <div class="form-group">
+                    <label>No HP</label>
+                    <input name="phone">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input name="password" type="password" required>
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <select name="role">
+                        <option value="pelanggan">Pelanggan</option>
+                        <option value="admin">Admin</option>
+                        <option value="petugas">Petugas</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <button class="btn btn-primary" type="submit">Simpan</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Daftar User</h2>
+            </div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nama</th>
+                            <th>Email</th>
+                            <th>No HP</th>
+                            <th>Role</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.length ? data.map(item => `
+                            <tr>
+                                <td>${item.id}</td>
+                                <td>${safe(item.name)}</td>
+                                <td>${safe(item.email)}</td>
+                                <td>${safe(item.phone)}</td>
+                                <td>${badge(item.role)}</td>
+                                <td>
+                                    <button class="btn btn-secondary" onclick="editUser(this)">Edit</button>
+                                    <button class="btn btn-danger" onclick="deleteData('/admin/user/${item.id}', 'loadUser')">Hapus</button>
+                                </td>
+                            </tr>
+                        `).join("") : `<tr><td colspan="6" class="empty">Belum ada data user</td></tr>`}
                     </tbody>
                 </table>
             </div>
@@ -395,6 +739,7 @@ async function loadMeter() {
                                 <td>${safe(item.alamat_lokasi)}</td>
                                 <td>${badge(item.status_meter)}</td>
                                 <td>
+                                    <button class="btn btn-secondary" onclick="editMeter(this)">Edit</button>
                                     <button class="btn btn-danger" onclick="deleteData('/meter/${item.id}', 'loadMeter')">Hapus</button>
                                 </td>
                             </tr>
@@ -475,6 +820,7 @@ async function loadCatatMeter() {
                                 <td>${safe(item.petugas_nama)}</td>
                                 <td>${badge(item.status_verifikasi)}</td>
                                 <td>
+                                    <button class="btn btn-secondary" onclick="editCatatMeter(this)">Edit</button>
                                     <button class="btn btn-danger" onclick="deleteData('/admin/catat-meter/${item.id}', 'loadCatatMeter')">Hapus</button>
                                 </td>
                             </tr>
@@ -556,6 +902,7 @@ async function loadTagihan() {
                                 <td>${badge(item.status_pembayaran)}</td>
                                 <td>${safe(item.tanggal_bayar)}</td>
                                 <td>
+                                    <button class="btn btn-secondary" onclick="editTagihan(this)">Edit</button>
                                     <button class="btn btn-danger" onclick="deleteData('/admin/tagihan/${item.id}', 'loadTagihan')">Hapus</button>
                                 </td>
                             </tr>
@@ -623,6 +970,7 @@ async function loadKomplain() {
                                 <td>${badge(item.status)}</td>
                                 <td>${safe(item.created_at)}</td>
                                 <td>
+                                    <button class="btn btn-secondary" onclick="editKomplain(this)">Edit</button>
                                     <button class="btn btn-danger" onclick="deleteData('/admin/komplain/${item.id}', 'loadKomplain')">Hapus</button>
                                 </td>
                             </tr>
@@ -703,6 +1051,7 @@ async function loadPemasanganBaru() {
                                 <td>${badge(item.jenis_pelanggan)}</td>
                                 <td>${badge(item.status)}</td>
                                 <td>
+                                    <button class="btn btn-secondary" onclick="editPemasanganBaru(this)">Edit</button>
                                     <button class="btn btn-danger" onclick="deleteData('/admin/pemasangan-baru/${item.id}', 'loadPemasanganBaru')">Hapus</button>
                                 </td>
                             </tr>
