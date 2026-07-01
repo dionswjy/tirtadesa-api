@@ -8,6 +8,7 @@ class Pelanggan(Base):
     __tablename__ = "pelanggan"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer)
     nama = Column(String(100))
     alamat = Column(Text)
     no_meter = Column(String(50))

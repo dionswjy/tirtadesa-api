@@ -15,11 +15,12 @@ function getUser() {
 }
 
 function setAuth(data) {
+    const user = data.user || data;
     localStorage.setItem(TOKEN_KEY, data.access_token);
     localStorage.setItem(USER_KEY, JSON.stringify({
-        name: data.name,
-        email: data.email,
-        role: data.role
+        name: user.name,
+        email: user.email,
+        role: user.role
     }));
 }
 
@@ -413,7 +414,7 @@ async function submitData(event, endpoint, reloadFnName) {
     new FormData(form).forEach((value, key) => {
         if (value === "") return;
 
-        if (["pelanggan_id", "meter_id"].includes(key)) {
+        if (["pelanggan_id", "meter_id", "user_id"].includes(key)) {
             payload[key] = Number(value);
         } else if ([
             "angka_meter_lalu",
@@ -494,7 +495,8 @@ async function loadDashboard() {
 }
 
 async function loadPelanggan() {
-    const data = await apiFetch("/pelanggan");
+    const res = await apiFetch("/pelanggan");
+    const data = res.data || res;
 
     render(`
         <div class="panel">
@@ -503,6 +505,10 @@ async function loadPelanggan() {
             </div>
 
             <form class="grid-form" onsubmit="submitData(event, '/pelanggan', 'loadPelanggan')">
+                <div class="form-group">
+                    <label>ID User</label>
+                    <input name="user_id" type="number" required placeholder="ID dari tabel users">
+                </div>
                 <div class="form-group">
                     <label>Nama</label>
                     <input name="nama" required>
@@ -514,6 +520,14 @@ async function loadPelanggan() {
                 <div class="form-group">
                     <label>No HP</label>
                     <input name="no_hp">
+                </div>
+                <div class="form-group">
+                    <label>No Meter</label>
+                    <input name="no_meter" required>
+                </div>
+                <div class="form-group">
+                    <label>Kategori</label>
+                    <input name="kategori" placeholder="contoh: rumah tangga">
                 </div>
                 <div class="form-group span-2">
                     <label>Alamat</label>
@@ -599,7 +613,8 @@ async function updateUserRole(id) {
 }
 
 async function loadUser() {
-    const data = await apiFetch("/admin/users");
+    const res = await apiFetch("/admin/users");
+    const data = res.data || res;
 
     render(`
         <div class="panel">
@@ -678,7 +693,8 @@ async function loadUser() {
 }
 
 async function loadMeter() {
-    const data = await apiFetch("/meter");
+    const res = await apiFetch("/meter");
+    const data = res.data || res;
 
     render(`
         <div class="panel">
@@ -752,7 +768,8 @@ async function loadMeter() {
 }
 
 async function loadCatatMeter() {
-    const data = await apiFetch("/catat-meter");
+    const res = await apiFetch("/catat-meter");
+    const data = res.data || res;
 
     render(`
         <div class="panel">
@@ -833,7 +850,8 @@ async function loadCatatMeter() {
 }
 
 async function loadTagihan() {
-    const data = await apiFetch("/admin/tagihan");
+    const res = await apiFetch("/admin/tagihan");
+    const data = res.data || res;
 
     render(`
         <div class="panel">
@@ -915,7 +933,8 @@ async function loadTagihan() {
 }
 
 async function loadKomplain() {
-    const data = await apiFetch("/admin/komplain");
+    const res = await apiFetch("/admin/komplain");
+    const data = res.data || res;
 
     render(`
         <div class="panel">
@@ -983,7 +1002,8 @@ async function loadKomplain() {
 }
 
 async function loadPemasanganBaru() {
-    const data = await apiFetch("/admin/pemasangan-baru");
+    const res = await apiFetch("/admin/pemasangan-baru");
+    const data = res.data || res;
 
     render(`
         <div class="panel">

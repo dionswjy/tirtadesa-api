@@ -1,3 +1,5 @@
+import base64
+import hashlib
 from datetime import datetime, timedelta
 from jose import jwt
 from cryptography.fernet import Fernet
@@ -5,7 +7,8 @@ from cryptography.fernet import Fernet
 SECRET_KEY = "tirtadesa_secret"
 ALGORITHM = "HS256"
 
-FERNET_KEY = Fernet.generate_key()
+# Derive a consistent Fernet key from SECRET_KEY so server reloads do not invalidate active sessions
+FERNET_KEY = base64.urlsafe_b64encode(hashlib.sha256(SECRET_KEY.encode()).digest())
 fernet = Fernet(FERNET_KEY)
 
 def encrypt_data(text: str):

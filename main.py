@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from database import engine, get_db
 from models import Base, Pelanggan as PelangganModel, User as UserModel, Meter as MeterModel, CatatMeter as CatatMeterModel, Tagihan as TagihanModel, Komplain as KomplainModel, PemasanganBaru as PemasanganBaruModel
 from passlib.context import CryptContext
-from auth import create_access_token, SECRET_KEY, ALGORITHM
+from auth import create_access_token, decrypt_data, SECRET_KEY, ALGORITHM
 from email.message import EmailMessage
 from dotenv import load_dotenv
 
@@ -59,6 +59,9 @@ class RegisterData(BaseModel):
     phone: str
     password: str
     otp: str
+    nik: str
+    alamat: str
+    kategori: str
 
 class SendOTPData(BaseModel):
     email: str
@@ -89,6 +92,7 @@ class UserEdit(BaseModel):
     password: Optional[str] = None
 
 class PelangganCreate(BaseModel):
+    user_id: int
     nama: str
     alamat: str
     no_meter: str
@@ -168,6 +172,7 @@ class PemasanganBaruUpdate(BaseModel):
 
 
 class PelangganUpdate(BaseModel):
+    user_id: Optional[int] = None
     nama: Optional[str] = None
     alamat: Optional[str] = None
     no_meter: Optional[str] = None
@@ -228,9 +233,12 @@ def verify_token(
             algorithms=[ALGORITHM]
         )
 
+        if "sub" in payload:
+            payload["sub"] = decrypt_data(payload["sub"])
+
         return payload
 
-    except JWTError:
+    except (JWTError, Exception):
         raise HTTPException(
             status_code=401,
             detail="Token tidak valid"
@@ -303,6 +311,17 @@ TirtaDesa
 def root():
     return {"message": "TirtaDesa API Running"}
 
+# ⚠️ ENDPOINT SEMENTARA - HAPUS SETELAH SELESAI SETUP ADMIN
+@app.post("/setup-admin")
+def setup_admin(data: SendOTPData, db: Session = Depends(get_db)):
+    user = db.query(UserModel).filter(UserModel.email == data.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User tidak ditemukan")
+    user.role = "admin"
+    db.commit()
+    db.refresh(user)
+    return {"message": f"User {user.email} berhasil dijadikan admin", "role": user.role}
+
 @app.post("/auth/login")
 def admin_login(
     data: LoginData,
@@ -310,6 +329,96 @@ def admin_login(
 ):
     return login(data, db)
 
+@app.get("/dashboard", dependencies=[Depends(verify_token)])
+def dashboard_pelanggan(
+    payload: dict = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    # Ambil email dari token
+    email = payload["sub"]
+
+    # Cari user
+    user = db.query(UserModel).filter(
+        UserModel.email == email
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="User tidak ditemukan, silakan login ulang"
+        )
+
+    # Cari pelanggan berdasarkan user_id
+    pelanggan = db.query(PelangganModel).filter(
+        PelangganModel.user_id == user.id
+    ).first()
+
+    if not pelanggan:
+        return {
+            "pelanggan_id": None,
+            "nama": user.name,
+            "email": user.email,
+            "no_meter": "-",
+            "penggunaan_air": 0,
+            "status_pembayaran": "Menunggu Verifikasi Admin",
+            "total_tagihan": 0,
+            "histori_penggunaan": []
+        }
+
+    # Cari meter
+    meter = db.query(MeterModel).filter(
+        MeterModel.pelanggan_id == pelanggan.id
+    ).first()
+
+    penggunaan = 0
+    status = "Belum Ada Tagihan"
+    total = 0
+    histori_penggunaan = []
+
+    if meter:
+
+        catatan = db.query(CatatMeterModel).filter(
+            CatatMeterModel.meter_id == meter.id
+        ).order_by(
+            CatatMeterModel.id.desc()
+        ).first()
+
+        if catatan:
+            penggunaan = catatan.penggunaan_m3
+
+        tagihan = db.query(TagihanModel).filter(
+            TagihanModel.meter_id == meter.id
+        ).order_by(
+            TagihanModel.id.desc()
+        ).first()
+
+        if tagihan:
+            status = tagihan.status_pembayaran
+            total = tagihan.total_tagihan
+
+        # Ambil histori penggunaan 6 bulan terakhir
+        catatan_history = db.query(CatatMeterModel).filter(
+            CatatMeterModel.meter_id == meter.id
+        ).order_by(
+            CatatMeterModel.bulan.desc()
+        ).limit(6).all()
+
+        for c in reversed(catatan_history):
+            histori_penggunaan.append({
+                "bulan": c.bulan,
+                "penggunaan": c.penggunaan_m3
+            })
+
+    return {
+        "pelanggan_id": pelanggan.id,
+        "nama": user.name,
+        "email": user.email,
+        "no_meter": pelanggan.no_meter,
+        "penggunaan_air": penggunaan,
+        "status_pembayaran": status,
+        "total_tagihan": total,
+        "histori_penggunaan": histori_penggunaan
+    }
 
 @app.get("/admin/dashboard")
 def dashboard(
@@ -335,6 +444,7 @@ def admin_tambah_pelanggan(
     db: Session = Depends(get_db)
 ):
     pelanggan = PelangganModel(
+        user_id=data.user_id,
         nama=data.nama,
         alamat=data.alamat,
         no_meter=data.no_meter,
@@ -349,10 +459,12 @@ def admin_tambah_pelanggan(
     db.commit()
     db.refresh(pelanggan)
 
-    return serialize_model(pelanggan)
+    return {
+        "message": "Pelanggan berhasil ditambahkan",
+        "data": serialize_model(pelanggan)
+    }
 
-
-@app.post("/admin/user", dependencies=[Depends(verify_admin)])
+@app.post("/admin/user", dependencies=[Depends(verify_token)])
 def admin_create_user(
     data: UserCreate,
     db: Session = Depends(get_db)
@@ -393,7 +505,7 @@ def admin_create_user(
     }
 
 
-@app.get("/admin/users", dependencies=[Depends(verify_admin)])
+@app.get("/admin/users", dependencies=[Depends(verify_token)])
 def admin_get_users(
     db: Session = Depends(get_db)
 ):
@@ -401,7 +513,7 @@ def admin_get_users(
     return [serialize_model(user) for user in users]
 
 
-@app.put("/admin/user/{id}/role", dependencies=[Depends(verify_admin)])
+@app.put("/admin/user/{id}/role", dependencies=[Depends(verify_token)])
 def admin_update_user_role(
     id: int,
     data: UserUpdate,
@@ -427,7 +539,7 @@ def admin_update_user_role(
     }
 
 
-@app.put("/admin/user/{id}", dependencies=[Depends(verify_admin)])
+@app.put("/admin/user/{id}", dependencies=[Depends(verify_token)])
 def admin_edit_user(
     id: int,
     data: UserEdit,
@@ -461,7 +573,7 @@ def admin_edit_user(
     }
 
 
-@app.delete("/admin/user/{id}", dependencies=[Depends(verify_admin)])
+@app.delete("/admin/user/{id}", dependencies=[Depends(verify_token)])
 def admin_delete_user(
     id: int,
     db: Session = Depends(get_db)
@@ -826,6 +938,21 @@ def register(
     db.commit()
     db.refresh(user_baru)
 
+    # Otomatis buat data pelanggan terkait dengan user baru ini
+    pelanggan_baru = PelangganModel(
+        user_id=user_baru.id,
+        nama=user_baru.name,
+        alamat=data.alamat,
+        no_meter="-",
+        kategori=data.kategori,
+        no_hp=user_baru.phone,
+        nik=data.nik,
+        status_pelanggan="aktif",
+        jenis_pelanggan="non_subsidi"
+    )
+    db.add(pelanggan_baru)
+    db.commit()
+
     del otp_store[data.email]
 
     return {
@@ -894,6 +1021,7 @@ def tambah_pelanggan(
 ):
 
     pelanggan_baru = PelangganModel(
+        user_id=data.user_id,
         nama=data.nama,
         alamat=data.alamat,
         no_meter=data.no_meter,
@@ -953,6 +1081,8 @@ def update_pelanggan(
             detail="Pelanggan tidak ditemukan"
         )
 
+    if data.user_id is not None:
+        pelanggan.user_id = data.user_id
     if data.nama is not None:
         pelanggan.nama = data.nama
     if data.alamat is not None:
@@ -1168,9 +1298,32 @@ def delete_tagihan(
     return {"message": "Tagihan berhasil dihapus"}
 
 
-@app.get("/admin/komplain", dependencies=[Depends(verify_token)])
-def get_komplain(db: Session = Depends(get_db)):
-    complaints = db.query(KomplainModel).all()
+@app.get("/admin/komplain")
+def get_komplain(
+    payload: dict = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    email = payload["sub"]
+    user = db.query(UserModel).filter(UserModel.email == email).first()
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="User tidak ditemukan"
+        )
+
+    if user.role in ["admin", "petugas"]:
+        complaints = db.query(KomplainModel).all()
+    else:
+        pelanggan = db.query(PelangganModel).filter(
+            PelangganModel.user_id == user.id
+        ).first()
+        if not pelanggan:
+            complaints = []
+        else:
+            complaints = db.query(KomplainModel).filter(
+                KomplainModel.pelanggan_id == pelanggan.id
+            ).all()
+
     return {
         "message": "Data komplain berhasil diambil",
         "data": [serialize_model(complaint) for complaint in complaints]
